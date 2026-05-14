@@ -17,6 +17,7 @@ services:
       - "${SRT_PORT:-9000}:${SRT_PORT:-9000}/udp"
     environment:
       - SRT_PORT=${SRT_PORT:-9000}
+      - SRT_PASSPHRASE=${SRT_PASSPHRASE}
       - RTMP_URL=${RTMP_URL}
       - LOCAL_RTMP_URL=rtmp://nginx-rtmp/live/stream
       - FALLBACK_TYPE=${FALLBACK_TYPE:-image}

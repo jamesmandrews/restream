@@ -47,6 +47,9 @@ Edit `.env` with your platform details:
 # Required: your platform RTMP URL with stream key
 RTMP_URL=rtmp://live.twitch.tv/app/live_xxxxxxxxxxxx
 
+# Required: SRT passphrase (10-79 chars) — prevents unauthorized streaming
+SRT_PASSPHRASE=my-secret-passphrase-here
+
 # Optional: change SRT listen port (default 9000)
 SRT_PORT=9000
 
@@ -84,16 +87,17 @@ docker compose logs -f orchestrator
 Point your SRT-capable camera or hardware encoder to:
 
 ```
-srt://YOUR_SERVER_IP:9000?mode=caller
+srt://YOUR_SERVER_IP:9000?mode=caller&passphrase=YOUR_SRT_PASSPHRASE
 ```
 
-The server listens in SRT listener mode. Most cameras and encoders (LiveU, Teradek, Marshall, Magewell, etc.) support SRT caller mode — set the destination to your server IP and port 9000.
+The server listens in SRT listener mode with passphrase encryption (AES-128). Most cameras and encoders (LiveU, Teradek, Marshall, Magewell, etc.) support SRT caller mode — set the destination to your server IP, port 9000, and the passphrase. Connections without the correct passphrase are rejected.
 
 **Test with FFmpeg** (useful for verifying the server works before connecting a camera):
 
 ```bash
 ffmpeg -f lavfi -i testsrc=size=1920x1080 -f lavfi -i sine \
-  -c:v libx264 -c:a aac -f mpegts srt://YOUR_SERVER_IP:9000
+  -c:v libx264 -c:a aac -f mpegts \
+  "srt://YOUR_SERVER_IP:9000?passphrase=YOUR_SRT_PASSPHRASE"
 ```
 
 ### 5. Firewall setup (Ubuntu)
@@ -115,6 +119,7 @@ sudo SRT_PORT=9001 bash setup-firewall.sh
 | Variable | Default | Description |
 |---|---|---|
 | `SRT_PORT` | `9000` | UDP port for SRT ingest |
+| `SRT_PASSPHRASE` | *(required)* | SRT encryption passphrase (10-79 chars) |
 | `RTMP_URL` | *(required)* | Platform RTMP URL with stream key |
 | `LOCAL_RTMP_URL` | `rtmp://nginx-rtmp/live/stream` | Internal relay URL (don't change) |
 | `FALLBACK_TYPE` | `image` | `image` or `video` |

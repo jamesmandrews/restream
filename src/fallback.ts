@@ -62,7 +62,7 @@ export function buildFallbackArgs(): string[] {
 
 export function buildLiveArgs(): string[] {
   return [
-    "-i", `srt://0.0.0.0:${config.srtPort}?mode=listener`,
+    "-i", `srt://0.0.0.0:${config.srtPort}?mode=listener&passphrase=${config.srtPassphrase}`,
     "-c", "copy",
     "-f", "flv",
     config.localRtmpUrl,

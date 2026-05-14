@@ -6,7 +6,7 @@ import { StreamStateMachine } from "./stream-state";
 
 async function main(): Promise<void> {
   logger.info("Restream orchestrator starting");
-  logger.info(`SRT port: ${config.srtPort}`);
+  logger.info(`SRT port: ${config.srtPort} (passphrase protected)`);
   logger.info(`RTMP target: ${config.rtmpUrl}`);
   logger.info(`Local relay: ${config.localRtmpUrl}`);
   logger.info(`Fallback: ${config.fallbackType} @ ${config.fallbackPath}`);

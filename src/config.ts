@@ -3,6 +3,7 @@ dotenv.config();
 
 export interface Config {
   srtPort: number;
+  srtPassphrase: string;
   rtmpUrl: string;
   localRtmpUrl: string;
   fallbackType: "image" | "video";
@@ -21,6 +22,7 @@ function requireEnv(key: string, fallback?: string): string {
 
 export const config: Config = {
   srtPort: parseInt(requireEnv("SRT_PORT", "9000"), 10),
+  srtPassphrase: requireEnv("SRT_PASSPHRASE"),
   rtmpUrl: requireEnv("RTMP_URL"),
   localRtmpUrl: requireEnv("LOCAL_RTMP_URL", "rtmp://nginx-rtmp/live/stream"),
   fallbackType: requireEnv("FALLBACK_TYPE", "image") as "image" | "video",

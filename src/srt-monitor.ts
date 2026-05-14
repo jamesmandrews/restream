@@ -26,7 +26,7 @@ export class SrtMonitor extends EventEmitter {
   }
 
   private probe(): void {
-    const srtUrl = `srt://127.0.0.1:${config.srtPort}?mode=caller&timeout=2000000`;
+    const srtUrl = `srt://127.0.0.1:${config.srtPort}?mode=caller&timeout=2000000&passphrase=${config.srtPassphrase}`;
 
     execFile(
       "ffprobe",
