@@ -1,0 +1,208 @@
+# Restream: SRT Ingest with Auto-Fallback
+
+Accept an SRT stream from OBS/other encoders, relay it as RTMP to Twitch, YouTube, or any RTMP platform. When the streamer disconnects, automatically switch to fallback content (BRB image or video loop) so the platform never shows "offline."
+
+## How It Works
+
+```
+[OBS/Encoder] --SRT--> [Orchestrator]
+                             |
+                       monitors SRT
+                       manages FFmpeg
+                             |
+                 +-----------+-----------+
+                 |                       |
+           [Stream UP]             [Stream DOWN]
+                 |                       |
+           FFmpeg: SRT->RTMP       FFmpeg: Fallback->RTMP
+                 |                       |
+                 +-----> nginx-rtmp <----+
+                        (local relay)
+                             |
+                       push to Twitch/
+                       YouTube/etc
+```
+
+**nginx-rtmp** maintains the persistent RTMP connection to the platform. During the ~1-2 second FFmpeg switch, `drop_idle_publisher 10s` keeps the session alive. The platform sees a continuous stream.
+
+## Requirements
+
+- Docker and Docker Compose
+- A server with a public IP (for SRT ingest)
+- An RTMP URL + stream key from your platform
+
+## Quick Start
+
+### 1. Clone and configure
+
+```bash
+git clone <your-repo-url> restream
+cd restream
+cp .env.example .env
+```
+
+Edit `.env` with your platform details:
+
+```bash
+# Required: your platform RTMP URL with stream key
+RTMP_URL=rtmp://live.twitch.tv/app/live_xxxxxxxxxxxx
+
+# Optional: change SRT listen port (default 9000)
+SRT_PORT=9000
+
+# Optional: fallback type - "image" or "video"
+FALLBACK_TYPE=image
+```
+
+### 2. Add fallback content
+
+Drop your files in the `fallback/` directory:
+
+- **BRB image**: Replace `fallback/brb.png` with your own 1920x1080 PNG
+- **Video loop**: Place an h264+AAC video file in `fallback/` and update `.env`:
+  ```bash
+  FALLBACK_TYPE=video
+  FALLBACK_FILE=my-brb-loop.mp4
+  ```
+
+A default BRB image is included.
+
+### 3. Start the server
+
+```bash
+docker compose up --build -d
+```
+
+Check logs:
+
+```bash
+docker compose logs -f orchestrator
+```
+
+### 4. Configure OBS
+
+In OBS (or any encoder that supports SRT):
+
+1. Go to **Settings > Stream**
+2. Set **Service** to **Custom**
+3. Set **Server** to:
+   ```
+   srt://YOUR_SERVER_IP:9000?mode=caller
+   ```
+4. Leave **Stream Key** blank (SRT doesn't use keys by default)
+5. Start streaming
+
+### 5. Firewall setup (Ubuntu)
+
+```bash
+sudo bash setup-firewall.sh
+```
+
+This opens SSH (22/tcp) and SRT (9000/udp), denies everything else inbound.
+
+If you changed `SRT_PORT`, pass it:
+
+```bash
+sudo SRT_PORT=9001 bash setup-firewall.sh
+```
+
+## Configuration Reference
+
+| Variable | Default | Description |
+|---|---|---|
+| `SRT_PORT` | `9000` | UDP port for SRT ingest |
+| `RTMP_URL` | *(required)* | Platform RTMP URL with stream key |
+| `LOCAL_RTMP_URL` | `rtmp://nginx-rtmp/live/stream` | Internal relay URL (don't change) |
+| `FALLBACK_TYPE` | `image` | `image` or `video` |
+| `FALLBACK_FILE` | `brb.png` | Filename in `fallback/` directory |
+| `PROBE_INTERVAL_MS` | `3000` | SRT health check interval (ms) |
+| `SWITCH_DELAY_MS` | `5000` | Delay before switching to fallback (ms) |
+
+## State Machine
+
+```
+IDLE --> FALLBACK --> LIVE --> SWITCHING --> FALLBACK
+          ^                                    |
+          +------------------------------------+
+```
+
+- **Startup**: Immediately begins streaming fallback content
+- **Stream detected**: Switches to live SRT feed
+- **Stream lost** (debounced): Switches back to fallback after `SWITCH_DELAY_MS`
+- **SWITCHING** state prevents race conditions during transitions
+
+## Fallback Content Guidelines
+
+### Image
+- PNG or JPEG, 1920x1080 recommended
+- Gets encoded to h264 in real-time by FFmpeg
+- Higher CPU usage than video loop
+
+### Video
+- Must be h264 video + AAC audio (RTMP requirement)
+- Loops infinitely with `-stream_loop -1`
+- Lower CPU usage since no encoding needed (`-c copy`)
+- Convert if needed:
+  ```bash
+  ffmpeg -i input.mov -c:v libx264 -c:a aac -movflags +faststart fallback/brb-loop.mp4
+  ```
+
+## Troubleshooting
+
+### Stream not connecting
+- Verify SRT port is open: `sudo ufw status`
+- Check the port is UDP, not TCP
+- Test locally: `ffmpeg -f lavfi -i testsrc -c:v libx264 -f mpegts srt://localhost:9000`
+
+### Platform shows offline during switch
+- Increase `drop_idle_publisher` in `nginx/nginx.conf` (default 10s)
+- Reduce `SWITCH_DELAY_MS` for faster fallback activation
+- Check orchestrator logs for switch timing
+
+### High CPU usage
+- Use video fallback instead of image (avoids real-time encoding)
+- Ensure live stream uses h264 so `-c copy` works (no transcoding)
+
+### Logs
+```bash
+# All services
+docker compose logs -f
+
+# Orchestrator only
+docker compose logs -f orchestrator
+
+# nginx-rtmp only
+docker compose logs -f nginx-rtmp
+```
+
+## Stopping
+
+```bash
+docker compose down
+```
+
+## Project Structure
+
+```
+restream/
+├── docker-compose.yml        # Service definitions
+├── Dockerfile                # Orchestrator (Node.js + FFmpeg)
+├── Dockerfile.nginx          # nginx-rtmp relay
+├── setup-firewall.sh         # Ubuntu UFW setup script
+├── .env.example              # Configuration template
+├── package.json
+├── tsconfig.json
+├── src/
+│   ├── index.ts              # Entry point
+│   ├── config.ts             # Environment config
+│   ├── logger.ts             # Winston logger
+│   ├── srt-monitor.ts        # SRT health detection
+│   ├── ffmpeg-manager.ts     # FFmpeg process lifecycle
+│   ├── stream-state.ts       # State machine
+│   └── fallback.ts           # Fallback content / FFmpeg args
+├── nginx/
+│   ├── nginx.conf            # nginx-rtmp configuration
+│   └── entrypoint.sh         # Runtime config injection
+└── fallback/
+    └── brb.png               # Default BRB image
+```
