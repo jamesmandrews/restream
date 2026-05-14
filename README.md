@@ -1,11 +1,11 @@
 # Restream: SRT Ingest with Auto-Fallback
 
-Accept an SRT stream from OBS/other encoders, relay it as RTMP to Twitch, YouTube, or any RTMP platform. When the streamer disconnects, automatically switch to fallback content (BRB image or video loop) so the platform never shows "offline."
+Accept an SRT stream from a camera or hardware encoder, relay it as RTMP to Twitch, YouTube, or any RTMP platform. When the camera feed drops, automatically switch to fallback content (BRB image or video loop) so the platform never shows "offline."
 
 ## How It Works
 
 ```
-[OBS/Encoder] --SRT--> [Orchestrator]
+[Camera/Encoder] --SRT--> [Orchestrator]
                              |
                        monitors SRT
                        manages FFmpeg
@@ -79,18 +79,22 @@ Check logs:
 docker compose logs -f orchestrator
 ```
 
-### 4. Configure OBS
+### 4. Configure your camera/encoder
 
-In OBS (or any encoder that supports SRT):
+Point your SRT-capable camera or hardware encoder to:
 
-1. Go to **Settings > Stream**
-2. Set **Service** to **Custom**
-3. Set **Server** to:
-   ```
-   srt://YOUR_SERVER_IP:9000?mode=caller
-   ```
-4. Leave **Stream Key** blank (SRT doesn't use keys by default)
-5. Start streaming
+```
+srt://YOUR_SERVER_IP:9000?mode=caller
+```
+
+The server listens in SRT listener mode. Most cameras and encoders (LiveU, Teradek, Marshall, Magewell, etc.) support SRT caller mode — set the destination to your server IP and port 9000.
+
+**Test with FFmpeg** (useful for verifying the server works before connecting a camera):
+
+```bash
+ffmpeg -f lavfi -i testsrc=size=1920x1080 -f lavfi -i sine \
+  -c:v libx264 -c:a aac -f mpegts srt://YOUR_SERVER_IP:9000
+```
 
 ### 5. Firewall setup (Ubuntu)
 
