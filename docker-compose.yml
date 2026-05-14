@@ -1,0 +1,30 @@
+services:
+  nginx-rtmp:
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    ports:
+      - "1935:1935"
+    environment:
+      - RTMP_URL=${RTMP_URL}
+    restart: unless-stopped
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${SRT_PORT:-9000}:${SRT_PORT:-9000}/udp"
+    environment:
+      - SRT_PORT=${SRT_PORT:-9000}
+      - RTMP_URL=${RTMP_URL}
+      - LOCAL_RTMP_URL=rtmp://nginx-rtmp/live/stream
+      - FALLBACK_TYPE=${FALLBACK_TYPE:-image}
+      - FALLBACK_PATH=/app/fallback/${FALLBACK_FILE:-brb.png}
+      - PROBE_INTERVAL_MS=${PROBE_INTERVAL_MS:-3000}
+      - SWITCH_DELAY_MS=${SWITCH_DELAY_MS:-5000}
+    volumes:
+      - ./fallback:/app/fallback:ro
+    depends_on:
+      - nginx-rtmp
+    restart: unless-stopped
