@@ -16,6 +16,13 @@ async function main(): Promise<void> {
   const stateMachine = new StreamStateMachine();
   const monitor = new SrtMonitor();
 
+  // Start relay first (reads from UDP, pushes to nginx-rtmp)
+  stateMachine.startRelay();
+
+  // Small delay to let relay bind UDP port
+  await new Promise((r) => setTimeout(r, 500));
+
+  // Start fallback (writes to UDP)
   stateMachine.startFallback();
 
   monitor.on("stream-up", async () => {
@@ -24,7 +31,7 @@ async function main(): Promise<void> {
   });
 
   monitor.on("stream-down", () => {
-    logger.info("Event: stream-down — restarting fallback");
+    logger.info("Event: stream-down");
     stateMachine.startFallback();
   });
 

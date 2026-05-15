@@ -3,6 +3,8 @@ import { execFileSync } from "child_process";
 import { config } from "./config";
 import { logger } from "./logger";
 
+const UDP_OUT = "udp://127.0.0.1:5000?pkt_size=1316";
+
 export function validateFallback(): void {
   if (!existsSync(config.fallbackPath)) {
     throw new Error(`Fallback file not found: ${config.fallbackPath}`);
@@ -29,6 +31,16 @@ export function validateFallback(): void {
   logger.info(`Fallback validated: type=${config.fallbackType} path=${config.fallbackPath}`);
 }
 
+export function buildRelayArgs(): string[] {
+  return [
+    "-f", "mpegts",
+    "-i", "udp://127.0.0.1:5000?overrun_nonfatal=1&fifo_size=50000000",
+    "-c", "copy",
+    "-f", "flv",
+    config.localRtmpUrl,
+  ];
+}
+
 export function buildFallbackArgs(): string[] {
   if (config.fallbackType === "video") {
     return [
@@ -36,12 +48,11 @@ export function buildFallbackArgs(): string[] {
       "-re",
       "-i", config.fallbackPath,
       "-c", "copy",
-      "-f", "flv",
-      config.rtmpUrl,
+      "-f", "mpegts",
+      UDP_OUT,
     ];
   }
 
-  // Image fallback: generate h264 video + silent audio from still image
   return [
     "-loop", "1",
     "-i", config.fallbackPath,
@@ -54,9 +65,9 @@ export function buildFallbackArgs(): string[] {
     "-g", "60",
     "-c:a", "aac",
     "-b:a", "128k",
-    "-t", "31536000", // ~1 year, effectively infinite
-    "-f", "flv",
-    config.rtmpUrl,
+    "-t", "31536000",
+    "-f", "mpegts",
+    UDP_OUT,
   ];
 }
 
@@ -64,7 +75,7 @@ export function buildLiveArgs(): string[] {
   return [
     "-i", `srt://0.0.0.0:${config.srtPort}?mode=listener&passphrase=${config.srtPassphrase}`,
     "-c", "copy",
-    "-f", "flv",
-    config.rtmpUrl,
+    "-f", "mpegts",
+    UDP_OUT,
   ];
 }

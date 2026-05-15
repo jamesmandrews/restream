@@ -1,15 +1,30 @@
 import { FFmpegProcess } from "./ffmpeg-manager";
-import { buildFallbackArgs } from "./fallback";
+import { buildFallbackArgs, buildRelayArgs } from "./fallback";
 import { logger } from "./logger";
 
 export type State = "IDLE" | "FALLBACK" | "LIVE";
 
 export class StreamStateMachine {
   private state: State = "IDLE";
+  private relayProcess: FFmpegProcess | null = null;
   private fallbackProcess: FFmpegProcess | null = null;
 
   getState(): State {
     return this.state;
+  }
+
+  startRelay(): void {
+    this.relayProcess = new FFmpegProcess("relay", buildRelayArgs());
+
+    this.relayProcess.on("exit", () => {
+      if (this.state !== "IDLE") {
+        logger.warn("Relay exited — restarting");
+        this.startRelay();
+      }
+    });
+
+    this.relayProcess.start();
+    logger.info("Relay started — reading from UDP, pushing to nginx-rtmp");
   }
 
   startFallback(): void {
@@ -34,28 +49,22 @@ export class StreamStateMachine {
   async goLive(): Promise<void> {
     if (this.state === "LIVE") return;
     logger.info(`State: ${this.state} -> LIVE`);
-    this.state = "LIVE";
 
-    // Don't kill fallback — Twitch will drop it when live FFmpeg
-    // connects with the same stream key. Clean up after a delay.
+    // Stop fallback — live FFmpeg will take over writing to UDP
     if (this.fallbackProcess?.running) {
-      const proc = this.fallbackProcess;
+      await this.fallbackProcess.forceStop();
       this.fallbackProcess = null;
-      setTimeout(async () => {
-        if (proc.running) {
-          logger.info("Cleaning up old fallback process");
-          await proc.stop();
-        }
-      }, 5000);
     }
 
+    this.state = "LIVE";
     logger.info("State: LIVE — streaming from SRT source");
   }
 
   async shutdown(): Promise<void> {
-    if (this.fallbackProcess?.running) {
-      await this.fallbackProcess.stop();
-    }
     this.state = "IDLE";
+    const stops: Promise<void>[] = [];
+    if (this.fallbackProcess?.running) stops.push(this.fallbackProcess.stop());
+    if (this.relayProcess?.running) stops.push(this.relayProcess.stop());
+    await Promise.all(stops);
   }
 }
