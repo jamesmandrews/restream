@@ -24,6 +24,7 @@ services:
       - FALLBACK_PATH=/app/fallback/${FALLBACK_FILE:-brb.png}
       - PROBE_INTERVAL_MS=${PROBE_INTERVAL_MS:-3000}
       - SWITCH_DELAY_MS=${SWITCH_DELAY_MS:-5000}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./fallback:/app/fallback:ro
     depends_on:
