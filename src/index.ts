@@ -19,8 +19,8 @@ async function main(): Promise<void> {
   stateMachine.startFallback();
 
   monitor.on("stream-up", async () => {
-    logger.info("Event: stream-up — killing fallback");
-    await stateMachine.stopFallback();
+    logger.info("Event: stream-up");
+    await stateMachine.goLive();
   });
 
   monitor.on("stream-down", () => {

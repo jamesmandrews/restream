@@ -37,7 +37,7 @@ export function buildFallbackArgs(): string[] {
       "-i", config.fallbackPath,
       "-c", "copy",
       "-f", "flv",
-      config.localRtmpUrl,
+      config.rtmpUrl,
     ];
   }
 
@@ -56,7 +56,7 @@ export function buildFallbackArgs(): string[] {
     "-b:a", "128k",
     "-t", "31536000", // ~1 year, effectively infinite
     "-f", "flv",
-    config.localRtmpUrl,
+    config.rtmpUrl,
   ];
 }
 
@@ -65,6 +65,6 @@ export function buildLiveArgs(): string[] {
     "-i", `srt://0.0.0.0:${config.srtPort}?mode=listener&passphrase=${config.srtPassphrase}`,
     "-c", "copy",
     "-f", "flv",
-    config.localRtmpUrl,
+    config.rtmpUrl,
   ];
 }

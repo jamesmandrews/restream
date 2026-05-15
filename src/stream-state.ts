@@ -16,17 +16,39 @@ export class StreamStateMachine {
     if (this.state === "FALLBACK") return;
     logger.info(`State: ${this.state} -> FALLBACK`);
     this.fallbackProcess = new FFmpegProcess("fallback", buildFallbackArgs());
+
+    this.fallbackProcess.on("exit", () => {
+      if (this.state === "FALLBACK") {
+        logger.warn("Fallback exited unexpectedly — restarting");
+        this.fallbackProcess = null;
+        this.state = "IDLE";
+        this.startFallback();
+      }
+    });
+
     this.fallbackProcess.start();
     this.state = "FALLBACK";
     logger.info("State: FALLBACK — fallback content streaming");
   }
 
-  async stopFallback(): Promise<void> {
-    if (this.fallbackProcess?.running) {
-      await this.fallbackProcess.forceStop();
-      this.fallbackProcess = null;
-    }
+  async goLive(): Promise<void> {
+    if (this.state === "LIVE") return;
+    logger.info(`State: ${this.state} -> LIVE`);
     this.state = "LIVE";
+
+    // Don't kill fallback — Twitch will drop it when live FFmpeg
+    // connects with the same stream key. Clean up after a delay.
+    if (this.fallbackProcess?.running) {
+      const proc = this.fallbackProcess;
+      this.fallbackProcess = null;
+      setTimeout(async () => {
+        if (proc.running) {
+          logger.info("Cleaning up old fallback process");
+          await proc.stop();
+        }
+      }, 5000);
+    }
+
     logger.info("State: LIVE — streaming from SRT source");
   }
 
