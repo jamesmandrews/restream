@@ -96,7 +96,7 @@ The server listens in SRT listener mode with passphrase encryption (AES-128). Mo
 
 ```bash
 ffmpeg -f lavfi -i testsrc=size=1920x1080 -f lavfi -i sine \
-  -c:v libx264 -c:a aac -f mpegts \
+  -c:v libx264 -pix_fmt yuv420p -c:a aac -f mpegts \
   "srt://YOUR_SERVER_IP:9000?passphrase=YOUR_SRT_PASSPHRASE"
 ```
 
