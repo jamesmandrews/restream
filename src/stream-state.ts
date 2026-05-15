@@ -1,10 +1,11 @@
+import { EventEmitter } from "events";
 import { FFmpegProcess } from "./ffmpeg-manager";
 import { buildFallbackArgs, buildLiveArgs } from "./fallback";
 import { logger } from "./logger";
 
 export type State = "IDLE" | "FALLBACK" | "LIVE" | "SWITCHING";
 
-export class StreamStateMachine {
+export class StreamStateMachine extends EventEmitter {
   private state: State = "IDLE";
   private liveProcess: FFmpegProcess | null = null;
   private fallbackProcess: FFmpegProcess | null = null;
@@ -19,13 +20,11 @@ export class StreamStateMachine {
     logger.info(`State: ${this.state} -> SWITCHING (to fallback)`);
     this.state = "SWITCHING";
 
-    // Stop live process if running
     if (this.liveProcess?.running) {
       await this.liveProcess.stop();
       this.liveProcess = null;
     }
 
-    // Start fallback
     this.fallbackProcess = new FFmpegProcess("fallback", buildFallbackArgs());
     this.fallbackProcess.start();
 
@@ -39,14 +38,20 @@ export class StreamStateMachine {
     logger.info(`State: ${this.state} -> SWITCHING (to live)`);
     this.state = "SWITCHING";
 
-    // Stop fallback process if running
     if (this.fallbackProcess?.running) {
       await this.fallbackProcess.stop();
       this.fallbackProcess = null;
     }
 
-    // Start live pipeline
     this.liveProcess = new FFmpegProcess("live", buildLiveArgs());
+
+    this.liveProcess.on("exit", () => {
+      if (this.state === "LIVE") {
+        logger.info("Live FFmpeg exited — camera disconnected");
+        this.emit("live-ended");
+      }
+    });
+
     this.liveProcess.start();
 
     this.state = "LIVE";

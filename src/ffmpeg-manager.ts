@@ -1,14 +1,17 @@
 import { ChildProcess, spawn } from "child_process";
+import { EventEmitter } from "events";
 import { logger } from "./logger";
 
-export class FFmpegProcess {
+export class FFmpegProcess extends EventEmitter {
   private process: ChildProcess | null = null;
   private _running = false;
 
   constructor(
     private readonly name: string,
     private readonly args: string[]
-  ) {}
+  ) {
+    super();
+  }
 
   get running(): boolean {
     return this._running;
@@ -34,6 +37,7 @@ export class FFmpegProcess {
     this.process.on("close", (code) => {
       this._running = false;
       logger.info(`${this.name}: exited with code ${code}`);
+      this.emit("exit", code);
     });
 
     this.process.on("error", (err) => {

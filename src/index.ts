@@ -16,23 +16,22 @@ async function main(): Promise<void> {
   const stateMachine = new StreamStateMachine();
   const monitor = new SrtMonitor();
 
-  // Start with fallback content
   await stateMachine.startFallback();
 
-  // Monitor SRT and switch accordingly
   monitor.on("stream-up", async () => {
     logger.info("Event: stream-up");
+    monitor.pause();
     await stateMachine.goLive();
   });
 
-  monitor.on("stream-down", async () => {
-    logger.info("Event: stream-down");
+  stateMachine.on("live-ended", async () => {
+    logger.info("Event: live-ended");
     await stateMachine.startFallback();
+    monitor.resume();
   });
 
   monitor.start();
 
-  // Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down`);
     monitor.stop();

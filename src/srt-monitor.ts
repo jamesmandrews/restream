@@ -1,34 +1,56 @@
-import { execFile } from "child_process";
+import { execFile, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
 import { config } from "./config";
 import { logger } from "./logger";
 
-export interface SrtMonitorEvents {
-  "stream-up": () => void;
-  "stream-down": () => void;
-}
-
 export class SrtMonitor extends EventEmitter {
   private interval: ReturnType<typeof setInterval> | null = null;
-  private wasUp = false;
-  private downSince: number | null = null;
+  private probing = false;
+  private paused = false;
+  private currentProbe: ChildProcess | null = null;
 
   start(): void {
-    logger.info(`SRT monitor started: probing every ${config.probeIntervalMs}ms`);
+    this.paused = false;
+    logger.info(`SRT monitor started: listening on port ${config.srtPort} every ${config.probeIntervalMs}ms`);
     this.interval = setInterval(() => this.probe(), config.probeIntervalMs);
+    this.probe();
   }
 
   stop(): void {
+    this.paused = true;
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
+    this.killProbe();
+  }
+
+  pause(): void {
+    this.paused = true;
+    this.killProbe();
+  }
+
+  resume(): void {
+    this.paused = false;
+    logger.info("SRT monitor resumed");
+  }
+
+  private killProbe(): void {
+    if (this.currentProbe) {
+      this.currentProbe.kill("SIGKILL");
+      this.currentProbe = null;
+      this.probing = false;
+    }
   }
 
   private probe(): void {
-    const srtUrl = `srt://127.0.0.1:${config.srtPort}?mode=caller&timeout=2000000&passphrase=${config.srtPassphrase}`;
+    if (this.probing || this.paused) return;
+    this.probing = true;
 
-    execFile(
+    const timeoutUs = (config.probeIntervalMs - 500) * 1000;
+    const srtUrl = `srt://0.0.0.0:${config.srtPort}?mode=listener&timeout=${timeoutUs}&passphrase=${config.srtPassphrase}`;
+
+    this.currentProbe = execFile(
       "ffprobe",
       [
         "-v", "error",
@@ -36,32 +58,17 @@ export class SrtMonitor extends EventEmitter {
         "-show_entries", "stream=codec_type",
         "-of", "csv=p=0",
       ],
-      { timeout: 5000 },
+      { timeout: config.probeIntervalMs + 2000 },
       (error, stdout) => {
+        this.probing = false;
+        this.currentProbe = null;
+
+        if (this.paused) return;
+
         const hasStream = !error && stdout.trim().length > 0;
-
         if (hasStream) {
-          this.downSince = null;
-          if (!this.wasUp) {
-            logger.info("SRT stream detected — UP");
-            this.wasUp = true;
-            this.emit("stream-up");
-          }
-        } else {
-          if (this.wasUp) {
-            if (!this.downSince) {
-              this.downSince = Date.now();
-              logger.info("SRT stream lost — waiting for debounce");
-            }
-
-            const elapsed = Date.now() - this.downSince;
-            if (elapsed >= config.switchDelayMs) {
-              logger.info(`SRT stream confirmed down after ${elapsed}ms`);
-              this.wasUp = false;
-              this.downSince = null;
-              this.emit("stream-down");
-            }
-          }
+          logger.info("SRT stream detected — camera connected");
+          this.emit("stream-up");
         }
       }
     );
