@@ -1,76 +1,50 @@
-import { execFile, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
-import { config } from "./config";
+import { FFmpegProcess } from "./ffmpeg-manager";
+import { buildLiveArgs } from "./fallback";
 import { logger } from "./logger";
 
 export class SrtMonitor extends EventEmitter {
-  private interval: ReturnType<typeof setInterval> | null = null;
-  private probing = false;
-  private paused = false;
-  private currentProbe: ChildProcess | null = null;
+  private liveProcess: FFmpegProcess | null = null;
+  private stopped = false;
 
   start(): void {
-    this.paused = false;
-    logger.info(`SRT monitor started: listening on port ${config.srtPort} every ${config.probeIntervalMs}ms`);
-    this.interval = setInterval(() => this.probe(), config.probeIntervalMs);
-    this.probe();
+    this.stopped = false;
+    this.startListener();
+    logger.info("SRT monitor started — live FFmpeg listening for connections");
   }
 
-  stop(): void {
-    this.paused = true;
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = null;
-    }
-    this.killProbe();
-  }
-
-  pause(): void {
-    this.paused = true;
-    this.killProbe();
-  }
-
-  resume(): void {
-    this.paused = false;
-    logger.info("SRT monitor resumed");
-  }
-
-  private killProbe(): void {
-    if (this.currentProbe) {
-      this.currentProbe.kill("SIGKILL");
-      this.currentProbe = null;
-      this.probing = false;
+  async stop(): Promise<void> {
+    this.stopped = true;
+    if (this.liveProcess?.running) {
+      await this.liveProcess.stop();
+      this.liveProcess = null;
     }
   }
 
-  private probe(): void {
-    if (this.probing || this.paused) return;
-    this.probing = true;
+  private startListener(): void {
+    if (this.stopped) return;
 
-    const timeoutUs = (config.probeIntervalMs - 500) * 1000;
-    const srtUrl = `srt://0.0.0.0:${config.srtPort}?mode=listener&timeout=${timeoutUs}&passphrase=${config.srtPassphrase}`;
+    this.liveProcess = new FFmpegProcess("live", buildLiveArgs());
+    let detected = false;
 
-    this.currentProbe = execFile(
-      "ffprobe",
-      [
-        "-v", "error",
-        "-i", srtUrl,
-        "-show_entries", "stream=codec_type",
-        "-of", "csv=p=0",
-      ],
-      { timeout: config.probeIntervalMs + 2000 },
-      (error, stdout) => {
-        this.probing = false;
-        this.currentProbe = null;
-
-        if (this.paused) return;
-
-        const hasStream = !error && stdout.trim().length > 0;
-        if (hasStream) {
-          logger.info("SRT stream detected — camera connected");
-          this.emit("stream-up");
-        }
+    this.liveProcess.on("stderr", (line: string) => {
+      if (!detected && line.includes("Input #0")) {
+        detected = true;
+        logger.info("SRT stream detected — camera connected");
+        this.emit("stream-up");
       }
-    );
+    });
+
+    this.liveProcess.on("exit", () => {
+      if (detected) {
+        logger.info("Live FFmpeg exited — camera disconnected");
+        this.emit("stream-down");
+      }
+      if (!this.stopped) {
+        setTimeout(() => this.startListener(), 1000);
+      }
+    });
+
+    this.liveProcess.start();
   }
 }

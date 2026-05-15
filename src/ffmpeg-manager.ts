@@ -31,6 +31,7 @@ export class FFmpegProcess extends EventEmitter {
       const line = data.toString().trim();
       if (line) {
         logger.debug(`${this.name}: ${line}`);
+        this.emit("stderr", line);
       }
     });
 
@@ -43,6 +44,22 @@ export class FFmpegProcess extends EventEmitter {
     this.process.on("error", (err) => {
       this._running = false;
       logger.error(`${this.name}: process error: ${err.message}`);
+    });
+  }
+
+  forceStop(): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.process || !this._running) {
+        resolve();
+        return;
+      }
+      logger.info(`${this.name}: force stopping`);
+      this.process.once("close", () => {
+        this._running = false;
+        this.process = null;
+        resolve();
+      });
+      this.process.kill("SIGKILL");
     });
   }
 
